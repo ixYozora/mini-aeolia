@@ -1,0 +1,19 @@
+# Upstream repos — they have their own git history; do not track here
+OS-Dev/
+Aeolia/
+
+# Build artifacts
+mini-aeolia/bin/
+mini-aeolia/**/*.o
+mini-aeolia/sched/vmlinux.h
+mini-aeolia/sched/miniaeo.skel.h
+mini-aeolia/sched/miniaeo_loader
+
+# Generated / large / ephemeral
+mini-aeolia/results/*.img
+*.qcow2
+*.swp
+__pycache__/
+
+# Keep deliverables: docs/, mini-aeolia sources, results/*.csv, results/*.png
+.idea/
