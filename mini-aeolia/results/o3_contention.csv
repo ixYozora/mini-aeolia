@@ -1,0 +1,13 @@
+config,hogs,p999_ns,hog_batches_s
+default,0,37648,0
+scx_coord,0,33975,0
+default,1,33297,1516
+scx_coord,1,27346,1442
+default,2,2826973,2749
+scx_coord,2,30368,1300
+default,4,3007878,3661
+scx_coord,4,28577,1402
+default,6,3051262,5149
+scx_coord,6,28969,1124
+default,8,3698119,6253
+scx_coord,8,26397,1371

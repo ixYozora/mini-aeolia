@@ -36,6 +36,7 @@
 #include <sched.h>
 #include <getopt.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <linux/fs.h>
 #include <liburing.h>
 
@@ -66,6 +67,10 @@ static inline uint64_t now_ns(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+}
+
+static inline uint64_t tv2ns(struct timeval tv) {
+    return (uint64_t)tv.tv_sec * 1000000000ull + (uint64_t)tv.tv_usec * 1000ull;
 }
 
 static uint64_t dev_size(int fd) {
@@ -154,7 +159,13 @@ int main(int argc, char **argv) {
     // simple xorshift for offsets
     uint64_t rng = 0x9e3779b97f4a7c15ull ^ (uint64_t)getpid();
 
+    // CPU-utilization accounting over the measured region (for active-checking
+    // cost analysis, experiment O1): spinning keeps the core busy even while
+    // waiting, so latency gains trade against CPU utilization.
+    struct rusage ru0; uint64_t wall0 = 0;
+
     for (long i = 0; i < total; i++) {
+        if (i == warmup) { getrusage(RUSAGE_THREAD, &ru0); wall0 = now_ns(); }
         rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17;
         uint64_t off = (rng % nblocks) * bs;
 
@@ -196,6 +207,12 @@ int main(int argc, char **argv) {
         if (i >= warmup) lat[i - warmup] = dt;
     }
 
+    struct rusage ru1; getrusage(RUSAGE_THREAD, &ru1);
+    uint64_t wall1 = now_ns();
+    double cpu_ns = (double)(tv2ns(ru1.ru_utime) + tv2ns(ru1.ru_stime)
+                           - tv2ns(ru0.ru_utime) - tv2ns(ru0.ru_stime));
+    double cpu_util = (wall1 > wall0) ? cpu_ns / (double)(wall1 - wall0) : 0.0;
+
     qsort(lat, iters, sizeof(uint64_t), cmp_u64);
     uint64_t sum = 0;
     for (long i = 0; i < iters; i++) sum += lat[i];
@@ -207,18 +224,19 @@ int main(int argc, char **argv) {
     double iops = 1e9 / mean;
 
     if (csv) {
-        // mode,bs,iters,min_ns,median_ns,mean_ns,p99_ns,p999_ns,iops
-        printf("%s,%zu,%ld,%lu,%lu,%.1f,%lu,%lu,%.0f\n",
-               mode_name(m), bs, iters, mn, med, mean, p99, p999, iops);
+        // mode,bs,iters,min_ns,median_ns,mean_ns,p99_ns,p999_ns,iops,cpu_util
+        printf("%s,%zu,%ld,%lu,%lu,%.1f,%lu,%lu,%.0f,%.3f\n",
+               mode_name(m), bs, iters, mn, med, mean, p99, p999, iops, cpu_util);
     } else {
-        printf("mode=%-8s bs=%zu dev=%s cpu=%d iters=%ld\n",
-               mode_name(m), bs, dev, cpu, iters);
-        printf("  min    = %6lu ns\n", mn);
-        printf("  median = %6lu ns\n", med);
-        printf("  mean   = %6.1f ns\n", mean);
-        printf("  p99    = %6lu ns\n", p99);
-        printf("  p99.9  = %6lu ns\n", p999);
-        printf("  IOPS   = %6.0f (depth=1, single task)\n", iops);
+        printf("mode=%-8s bs=%zu dev=%s cpu=%d iters=%ld spin=%ldus\n",
+               mode_name(m), bs, dev, cpu, iters, spin_us);
+        printf("  min      = %6lu ns\n", mn);
+        printf("  median   = %6lu ns\n", med);
+        printf("  mean     = %6.1f ns\n", mean);
+        printf("  p99      = %6lu ns\n", p99);
+        printf("  p99.9    = %6lu ns\n", p999);
+        printf("  IOPS     = %6.0f (depth=1, single task)\n", iops);
+        printf("  cpu_util = %6.1f%% (busy fraction of the core)\n", cpu_util * 100.0);
     }
 
     free(lat);

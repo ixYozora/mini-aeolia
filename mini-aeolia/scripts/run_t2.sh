@@ -20,7 +20,7 @@ LOADER="sched/miniaeo_loader"
 [[ -x "$LOADER" ]]   || { echo "build scheduler: make -C sched"; exit 1; }
 [[ -b "$DEV" ]]      || { echo "$DEV missing; run scripts/setup_nullblk.sh"; exit 1; }
 
-echo "config,hogs,cpu,median_ns,p99_ns,p999_ns,p9999_ns" > "$OUT"
+echo "config,hogs,cpu,median_ns,p99_ns,p999_ns,p9999_ns,hog_batches_s" > "$OUT"
 
 run_coexist() { # $1 = label
   ./bin/coexist --dev "$DEV" --hogs "$HOGS" --cpu "$CPU" --iters "$ITERS" --csv "$1" >> "$OUT"

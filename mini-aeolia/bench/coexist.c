@@ -30,6 +30,7 @@
 
 static volatile int hogs_stop = 0;
 static int g_cpu = 3;
+static volatile uint64_t hog_work = 0;   /* total compute-hog iterations done */
 
 static inline uint64_t now_ns(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -55,7 +56,12 @@ static void *hog_fn(void *arg) {
     pthread_setname_np(pthread_self(), "hog");
     pin(g_cpu);
     volatile uint64_t x = 0;
-    while (!hogs_stop) { for (int i = 0; i < 100000; i++) x += i * 2654435761u; }
+    uint64_t local = 0;
+    while (!hogs_stop) {
+        for (int i = 0; i < 100000; i++) x += i * 2654435761u;
+        local++;
+    }
+    __atomic_fetch_add(&hog_work, local, __ATOMIC_RELAXED);  /* compute progress */
     return (void *)(uintptr_t)x;
 }
 
@@ -118,6 +124,7 @@ int main(int argc, char **argv) {
 
     uint64_t *lat = calloc(iters, sizeof(uint64_t));
     pthread_t hog[64]; if (nhogs > 64) nhogs = 64;
+    uint64_t run0 = now_ns();
     for (int i = 0; i < nhogs; i++) pthread_create(&hog[i], NULL, hog_fn, NULL);
 
     struct lc_args A = { dev, bs, iters, warmup, lat };
@@ -126,17 +133,23 @@ int main(int argc, char **argv) {
 
     hogs_stop = 1;
     for (int i = 0; i < nhogs; i++) pthread_join(hog[i], NULL);
+    uint64_t run1 = now_ns();
+    /* compute-hog throughput over the run (relative comparison across
+       schedulers = the throughput cost of protecting LC latency, exp O4) */
+    double secs = (run1 - run0) / 1e9;
+    double hog_batches_s = (secs > 0 && nhogs > 0) ? hog_work / secs : 0.0;
 
     qsort(lat, iters, sizeof(uint64_t), cmp_u64);
     uint64_t med = lat[iters/2], p99 = lat[(long)(iters*0.99)],
              p999 = lat[(long)(iters*0.999)], p9999 = lat[(long)(iters*0.9999)];
 
     if (csv) {
-        // config,hogs,cpu,median_ns,p99_ns,p999_ns,p9999_ns
-        printf("%s,%d,%d,%lu,%lu,%lu,%lu\n", label, nhogs, g_cpu, med, p99, p999, p9999);
+        // config,hogs,cpu,median_ns,p99_ns,p999_ns,p9999_ns,hog_batches_s
+        printf("%s,%d,%d,%lu,%lu,%lu,%lu,%.0f\n",
+               label, nhogs, g_cpu, med, p99, p999, p9999, hog_batches_s);
     } else {
-        printf("config=%s hogs=%d cpu=%d  median=%lu p99=%lu p99.9=%lu p99.99=%lu (ns)\n",
-               label, nhogs, g_cpu, med, p99, p999, p9999);
+        printf("config=%s hogs=%d cpu=%d  median=%lu p99=%lu p99.9=%lu p99.99=%lu (ns)  hog=%.0f batch/s\n",
+               label, nhogs, g_cpu, med, p99, p999, p9999, hog_batches_s);
     }
     free(lat);
     return 0;

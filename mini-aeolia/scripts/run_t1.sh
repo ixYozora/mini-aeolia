@@ -18,7 +18,7 @@ PROBE="bin/lat_probe"
 [[ -b "$DEV" ]]   || { echo "block device $DEV not found; run scripts/setup_nullblk.sh"; exit 1; }
 
 LABEL="${LABEL:-default}"   # set LABEL=active_check when running under the M2 scheduler
-echo "mode,bs,iters,min_ns,median_ns,mean_ns,p99_ns,p999_ns,iops,sched" > "$OUT"
+echo "mode,bs,iters,min_ns,median_ns,mean_ns,p99_ns,p999_ns,iops,cpu_util,sched" > "$OUT"
 
 for bs in 4096 16384 131072; do
   for mode in posix iou iou_active iou_poll; do
