@@ -15,9 +15,14 @@ echo "[*] mfs (no cache)"
 MFS_CACHE_BLOCKS=0    ./bin/fs_micro --target mfs --dev "$DEV" --nfiles "$N" --fsize "$F" --csv mfs_nocache >> "$OUT"
 echo "[*] mfs (cache 8192 blocks = 32 MB)"
 MFS_CACHE_BLOCKS=8192 ./bin/fs_micro --target mfs --dev "$DEV" --nfiles "$N" --fsize "$F" --csv mfs_cache   >> "$OUT"
-echo "[*] ext4"
-umount "$MNT" 2>/dev/null || true
-mkfs.ext4 -F -q "$DEV"; mkdir -p "$MNT"; mount "$DEV" "$MNT"; rm -rf "${MNT:?}/x"; mkdir -p "$MNT/x"
-./bin/fs_micro --target posix --dir "$MNT/x" --nfiles "$N" --fsize "$F" --csv ext4 >> "$OUT"
-sync; umount "$MNT"
+run_kfs(){  # $1 = fs label, $2 = mkfs command
+  echo "[*] $1"
+  umount "$MNT" 2>/dev/null || true
+  $2 "$DEV"
+  mkdir -p "$MNT"; mount "$DEV" "$MNT"; rm -rf "${MNT:?}/x"; mkdir -p "$MNT/x"
+  ./bin/fs_micro --target posix --dir "$MNT/x" --nfiles "$N" --fsize "$F" --csv "$1" >> "$OUT"
+  sync; umount "$MNT"
+}
+run_kfs ext4 "mkfs.ext4 -F -q"
+run_kfs f2fs "mkfs.f2fs -f -q"
 echo "[*] wrote $OUT"; column -t -s, "$OUT"
