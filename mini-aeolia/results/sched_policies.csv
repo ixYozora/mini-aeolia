@@ -1,0 +1,13 @@
+config,hogs,p999_ns,hog_batches_s
+default,1,1781302,594
+preempt,1,44361,183
+fair,1,999327,462
+default,2,3871570,1528
+preempt,2,43623,257
+fair,2,2997973,2091
+default,4,3714946,2698
+preempt,4,27656,247
+fair,4,7998785,3363
+default,8,3747602,3948
+preempt,8,40167,193
+fair,8,27004678,3850

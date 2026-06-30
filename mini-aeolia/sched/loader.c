@@ -26,7 +26,7 @@ static int libbpf_print(enum libbpf_print_level lvl, const char *fmt, va_list ap
 
 int main(int argc, char **argv)
 {
-    int coordinate = (argc > 1) ? atoi(argv[1]) : 1;
+    int mode = (argc > 1) ? atoi(argv[1]) : 2;   /* 0 fifo, 1 preempt, 2 fair */
 
     libbpf_set_print(libbpf_print);
     signal(SIGINT, on_sig);
@@ -35,23 +35,25 @@ int main(int argc, char **argv)
     struct miniaeo *skel = miniaeo__open();
     if (!skel) { fprintf(stderr, "open failed\n"); return 1; }
 
-    skel->rodata->coordinate = coordinate ? true : false;
+    skel->rodata->mode = mode;
 
     if (miniaeo__load(skel)) { fprintf(stderr, "load failed\n"); goto err; }
 
     struct bpf_link *link = bpf_map__attach_struct_ops(skel->maps.miniaeo_ops);
     if (!link) { fprintf(stderr, "attach failed (need root + sched_ext)\n"); goto err; }
 
-    fprintf(stderr, "[miniaeo] attached (coordinate=%d). Ctrl-C / SIGTERM to detach.\n",
-            coordinate);
+    const char *mname = mode == 0 ? "fifo" : mode == 1 ? "preempt" : "fair";
+    fprintf(stderr, "[miniaeo] attached (mode=%d/%s). Ctrl-C / SIGTERM to detach.\n",
+            mode, mname);
     printf("READY\n"); fflush(stdout);
 
     while (!stop) {
         sleep(1);
         if (skel->bss) {
-            fprintf(stderr, "[miniaeo] lc_preempt=%llu global=%llu\r",
-                    (unsigned long long)skel->bss->nr_lc_preempt,
-                    (unsigned long long)skel->bss->nr_global);
+            fprintf(stderr, "[miniaeo] preempt=%llu global=%llu vtime=%llu\r",
+                    (unsigned long long)skel->bss->nr_preempt,
+                    (unsigned long long)skel->bss->nr_global,
+                    (unsigned long long)skel->bss->nr_vtime);
         }
     }
     fprintf(stderr, "\n[miniaeo] detaching\n");
