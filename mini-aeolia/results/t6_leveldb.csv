@@ -1,0 +1,11 @@
+fs,bench,ops_per_s
+ext4,fillseq,161836
+ext4,fillrandom,139111
+ext4,fillsync,5595
+ext4,readrandom,84725
+ext4,deleterandom,150337
+f2fs,fillseq,137025
+f2fs,fillrandom,99346
+f2fs,fillsync,9529
+f2fs,readrandom,68058
+f2fs,deleterandom,109253
