@@ -57,6 +57,7 @@ typedef struct mfs {
     size_t   bitmap_bytes;
     void    *iobuf;           /* aligned 1-block bounce buffer */
     struct io_uring *ring;
+    void    *cache;           /* write-back block cache (bcache_t*), NULL = off */
 } mfs_t;
 
 /* lifecycle */

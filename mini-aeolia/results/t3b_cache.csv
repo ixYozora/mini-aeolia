@@ -1,0 +1,13 @@
+target,op,nfiles,us_per_op,ops_per_s
+mfs_nocache,create,5000,85.046,11758
+mfs_nocache,write,5000,106.295,9408
+mfs_nocache,read,5000,39.746,25160
+mfs_nocache,stat,5000,16.670,59990
+mfs_cache,create,5000,3.464,288656
+mfs_cache,write,5000,15.216,65719
+mfs_cache,read,5000,1.645,608042
+mfs_cache,stat,5000,0.341,2929114
+ext4,create,5000,41.838,23902
+ext4,write,5000,6.936,144175
+ext4,read,5000,3.268,305996
+ext4,stat,5000,1.284,778834

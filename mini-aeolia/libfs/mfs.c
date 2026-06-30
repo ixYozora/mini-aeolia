@@ -37,8 +37,116 @@ static int bio(mfs_t *fs, int is_write, uint64_t blk, void *buf) {
     io_uring_cqe_seen(fs->ring, cqe);
     return (res == (int)MFS_BS) ? 0 : -1;
 }
-static int bread (mfs_t *fs, uint64_t blk, void *buf){ return bio(fs,0,blk,buf); }
-static int bwrite(mfs_t *fs, uint64_t blk, void *buf){ return bio(fs,1,blk,buf); }
+/* ---- write-back block cache (#1): hash + LRU, dirty tracking ----
+ * bread/bwrite go through the cache; the raw bio() above is only used on a miss
+ * (load) or on dirty eviction/flush. Write-back: bwrite only marks dirty.     */
+struct bcache_entry {
+    uint64_t blkno;
+    int   in_use, dirty;
+    int32_t hnext, lprev, lnext;   /* hash chain + LRU links (slot indices) */
+};
+typedef struct bcache {
+    uint32_t cap, mask, used;
+    int32_t *htab;                 /* hash heads, size mask+1 (-1 = empty) */
+    struct bcache_entry *ent;      /* cap entries */
+    uint8_t *data;                 /* cap * MFS_BS, 4096-aligned */
+    int32_t  lru_head, lru_tail;   /* MRU = head */
+} bcache_t;
+
+static inline uint8_t *edata(bcache_t *c, int32_t i){ return c->data + (size_t)i*MFS_BS; }
+
+static void lru_remove(bcache_t *c, int32_t i){
+    struct bcache_entry *e=&c->ent[i];
+    if (e->lprev>=0) c->ent[e->lprev].lnext=e->lnext; else c->lru_head=e->lnext;
+    if (e->lnext>=0) c->ent[e->lnext].lprev=e->lprev; else c->lru_tail=e->lprev;
+    e->lprev=e->lnext=-1;
+}
+static void lru_push_front(bcache_t *c, int32_t i){
+    struct bcache_entry *e=&c->ent[i];
+    e->lprev=-1; e->lnext=c->lru_head;
+    if (c->lru_head>=0) c->ent[c->lru_head].lprev=i;
+    c->lru_head=i;
+    if (c->lru_tail<0) c->lru_tail=i;
+}
+static void hash_insert(bcache_t *c, int32_t i){
+    uint32_t h=c->ent[i].blkno & c->mask;
+    c->ent[i].hnext=c->htab[h]; c->htab[h]=i;
+}
+static void hash_remove(bcache_t *c, int32_t i){
+    uint32_t h=c->ent[i].blkno & c->mask;
+    int32_t *p=&c->htab[h];
+    while (*p>=0){ if (*p==i){ *p=c->ent[i].hnext; break; } p=&c->ent[*p].hnext; }
+    c->ent[i].hnext=-1;
+}
+
+/* return the slot for `blk`, loading from device if `load` and it was a miss */
+static struct bcache_entry *cache_slot(mfs_t *fs, uint64_t blk, int load){
+    bcache_t *c=fs->cache;
+    uint32_t h=blk & c->mask;
+    for (int32_t i=c->htab[h]; i>=0; i=c->ent[i].hnext)
+        if (c->ent[i].in_use && c->ent[i].blkno==blk){ lru_remove(c,i); lru_push_front(c,i); return &c->ent[i]; }
+    int32_t slot;
+    if (c->used < c->cap) {
+        slot = c->used++;
+    } else {
+        slot = c->lru_tail;                       /* evict LRU */
+        struct bcache_entry *ev=&c->ent[slot];
+        if (ev->dirty){ if (bio(fs,1,ev->blkno,edata(c,slot))) return NULL; ev->dirty=0; }
+        hash_remove(c, slot);
+        lru_remove(c, slot);
+    }
+    struct bcache_entry *e=&c->ent[slot];
+    e->blkno=blk; e->in_use=1; e->dirty=0;
+    if (load){ if (bio(fs,0,blk,edata(c,slot))) return NULL; }
+    hash_insert(c, slot);
+    lru_push_front(c, slot);
+    return e;
+}
+
+static int bread(mfs_t *fs, uint64_t blk, void *buf){
+    bcache_t *c=fs->cache;
+    if (!c) return bio(fs,0,blk,buf);
+    struct bcache_entry *e=cache_slot(fs, blk, 1);
+    if (!e) return -1;
+    memcpy(buf, edata(c, (int32_t)(e - c->ent)), MFS_BS);
+    return 0;
+}
+static int bwrite(mfs_t *fs, uint64_t blk, void *buf){
+    bcache_t *c=fs->cache;
+    if (!c) return bio(fs,1,blk,buf);
+    struct bcache_entry *e=cache_slot(fs, blk, 0);   /* full overwrite -> no load */
+    if (!e) return -1;
+    memcpy(edata(c, (int32_t)(e - c->ent)), buf, MFS_BS);
+    e->dirty=1;
+    return 0;
+}
+
+static bcache_t *cache_new(uint32_t cap){
+    if (cap==0) return NULL;
+    bcache_t *c=calloc(1,sizeof(*c));
+    c->cap=cap;
+    uint32_t m=1; while (m<cap) m<<=1; c->mask=m-1;
+    c->htab=malloc((size_t)(c->mask+1)*sizeof(int32_t));
+    for (uint32_t i=0;i<=c->mask;i++) c->htab[i]=-1;
+    c->ent=calloc(cap,sizeof(struct bcache_entry));
+    if (posix_memalign((void**)&c->data,4096,(size_t)cap*MFS_BS)){ free(c); return NULL; }
+    c->lru_head=c->lru_tail=-1; c->used=0;
+    return c;
+}
+static int cache_flush(mfs_t *fs){
+    bcache_t *c=fs->cache; if (!c) return 0;
+    for (uint32_t i=0;i<c->used;i++)
+        if (c->ent[i].in_use && c->ent[i].dirty){
+            if (bio(fs,1,c->ent[i].blkno,edata(c,(int32_t)i))) return -1;
+            c->ent[i].dirty=0;
+        }
+    return 0;
+}
+static void cache_free(mfs_t *fs){
+    bcache_t *c=fs->cache; if (!c) return;
+    free(c->htab); free(c->ent); free(c->data); free(c);
+    fs->cache=NULL;
+}
 
 /* ---- inode table access ---- */
 static void ino_loc(mfs_t *fs, int ino, uint64_t *blk, uint32_t *off) {
@@ -300,6 +408,11 @@ int mfs_mount(const char *path, mfs_t *fs) {
     if (io_uring_queue_init(8, fs->ring, 0) < 0) return -1;
     if (posix_memalign(&fs->iobuf, 4096, MFS_BS)) return -1;
 
+    /* block cache: MFS_CACHE_BLOCKS (default 8192 = 32 MB); 0 disables it */
+    { const char *cb=getenv("MFS_CACHE_BLOCKS");
+      uint32_t cap = cb ? (uint32_t)strtoul(cb,NULL,0) : 8192u;
+      fs->cache = cache_new(cap); }
+
     if (bread(fs, 0, fs->iobuf)) return -1;
     memcpy(&fs->sb, fs->iobuf, sizeof(fs->sb));
     if (fs->sb.magic != MFS_MAGIC) { errno = EINVAL; return -1; }
@@ -328,11 +441,13 @@ int mfs_sync(mfs_t *fs) {
     uint64_t bm_blocks = fs->bitmap_bytes / MFS_BS;
     for (uint64_t b = 0; b < bm_blocks; b++)
         if (bwrite(fs, fs->sb.bitmap_start + b, fs->bitmap + b*MFS_BS)) return -1;
+    if (cache_flush(fs)) return -1;          /* push dirty cached blocks to disk */
     fsync(fs->fd);
     return 0;
 }
 void mfs_umount(mfs_t *fs) {
-    mfs_sync(fs);
+    mfs_sync(fs);                            /* flushes the cache */
+    cache_free(fs);
     if (fs->ring) { io_uring_queue_exit(fs->ring); free(fs->ring); }
     free(fs->bitmap); free(fs->iobuf); free(g_imap); g_imap = NULL;
     close(fs->fd);
