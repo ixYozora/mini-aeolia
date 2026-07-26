@@ -2,10 +2,10 @@
 //
 // A small POSIX-ish filesystem that lives entirely in userspace and accesses
 // the block device directly via io_uring + O_DIRECT — no VFS, no syscalls per
-// op, no kernel filesystem. This is the Tier-B stand-in for AeoFS: it
-// demonstrates the *library filesystem* model (paper §7) on commodity hardware.
-// It does NOT implement MPK trusted/untrusted split or journaling — see
-// ../docs/07 for what is and isn't modelled.
+// op, no kernel filesystem. This is the stand-in for AeoFS: it demonstrates the
+// *library filesystem* model (paper §7) on commodity hardware. It does NOT
+// implement the MPK trusted/untrusted split or journaling; see ../README.md for
+// what is and isn't modelled.
 //
 // Scope: a single flat directory (root), regular files, direct + single-indirect
 // block maps. Enough to benchmark create/stat/read/write against ext4 (T3).

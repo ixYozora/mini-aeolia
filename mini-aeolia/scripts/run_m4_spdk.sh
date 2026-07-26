@@ -13,11 +13,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SPDK_DIR="${SPDK_DIR:-/home/yozora/Desktop/Software-Seminar/Aeolia/benchmarks/spdk}"
+#   SPDK_DIR=/path/to/spdk sudo -E scripts/run_m4_spdk.sh
+SPDK_DIR="${SPDK_DIR:-$PWD/../spdk}"
 BDEVPERF="$SPDK_DIR/build/examples/bdevperf"
 RUNTIME="${RUNTIME:-10}"
 OUT="results/t4_spdk.csv"
-[[ -x "$BDEVPERF" ]] || { echo "build SPDK first (see docs/10)"; exit 1; }
+[[ -x "$BDEVPERF" ]] || {
+    echo "bdevperf not found at $BDEVPERF"
+    echo "build SPDK, then point SPDK_DIR at it:  SPDK_DIR=/path/to/spdk sudo -E $0"
+    exit 1; }
 
 echo "[*] allocating hugepages (manual; NO device binding, NO spdk setup.sh)"
 sudo bash -c 'echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'

@@ -2,6 +2,12 @@
 OS-Dev/
 Aeolia/
 
+# Local-only working material (notes, drafts, papers, slides)
+docs/
+abschlussarbeiten_vorlage/
+vorlage_beamer/
+*.pdf
+
 # Build artifacts
 mini-aeolia/bin/
 mini-aeolia/**/*.o
@@ -15,5 +21,7 @@ mini-aeolia/results/*.img
 *.swp
 __pycache__/
 
-# Keep deliverables: docs/, mini-aeolia sources, results/*.csv, results/*.png
+# Editors / tooling
 .idea/
+.vscode/
+.claude/

@@ -4,9 +4,9 @@
 //   --target mfs    the mini library filesystem on a raw block device (--dev)
 //   --target posix  a kernel filesystem (e.g. ext4) under a directory (--dir)
 //
-// Reports per-op latency and ops/sec per phase. See ../docs/07 for the honesty
-// framing: mfs is expected to TRAIL cached ext4 here, because it lacks the page
-// cache and the UINTR/MPK fast paths — quantifying that gap is the point.
+// Reports per-op latency and ops/sec per phase. Without its block cache
+// (MFS_CACHE_BLOCKS=0) mfs is expected to TRAIL cached ext4, because every op
+// becomes a synchronous device round trip; quantifying that gap is the point.
 //
 //   sudo ./fs_micro --target mfs   --dev /dev/nullb0 --nfiles 5000 --fsize 4096 --csv mfs
 //   sudo ./fs_micro --target posix --dir /mnt/x      --nfiles 5000 --fsize 4096 --csv ext4

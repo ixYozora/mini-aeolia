@@ -1,7 +1,7 @@
 // loader.c — load/attach the miniaeo sched_ext scheduler, then stay alive
 // (the struct_ops scheduler is active only while this process holds the link).
 //
-//   ./miniaeo_loader [coordinate]    coordinate = 0 or 1 (default 1)
+//   ./miniaeo_loader [mode]    mode = 0 fifo, 1 preempt, 2 fair (default 2)
 //
 // Run it in the background, run the workload, then SIGTERM it to restore the
 // default kernel scheduler.

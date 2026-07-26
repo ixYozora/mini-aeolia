@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_baselines.sh — Test T5: replicate the *baseline* storage columns of
 # Aeolia's evaluation with fio (the Aeolia/AeoFS columns need UINTR/MPK and are
-# not reproducible here — see docs/05). Mirrors the paper's storage baselines:
+# not reproducible here). Mirrors the paper's storage baselines:
 #   psync            -> POSIX
 #   io_uring         -> io_uring default (interrupt)
 #   io_uring+hipri   -> io_uring polling

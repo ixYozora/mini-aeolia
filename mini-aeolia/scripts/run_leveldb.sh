@@ -5,11 +5,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEV="${1:-/dev/nullb0}"
-DB_BENCH="${DB_BENCH:-/home/yozora/Desktop/Software-Seminar/Aeolia/benchmarks/leveldb/build/db_bench}"
+#   DB_BENCH=/path/to/db_bench sudo -E scripts/run_leveldb.sh
+DB_BENCH="${DB_BENCH:-$PWD/../leveldb/build/db_bench}"
 MNT="/mnt/mfs_ext4"; N="${NUM:-100000}"
 BENCH="fillseq,fillrandom,fillsync,readrandom,deleterandom"
 OUT="results/t6_leveldb.csv"
-[[ -x "$DB_BENCH" ]] || { echo "build db_bench first (see docs/15)"; exit 1; }
+[[ -x "$DB_BENCH" ]] || {
+    echo "db_bench not found at $DB_BENCH"
+    echo "build LevelDB, then point DB_BENCH at it:  DB_BENCH=/path/to/db_bench sudo -E $0"
+    exit 1; }
 
 echo "fs,bench,ops_per_s" > "$OUT"
 run_fs(){  # $1 = fs label, $2 = mkfs command
