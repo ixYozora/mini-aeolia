@@ -27,8 +27,7 @@ def main():
         ax.bar(x + off, [data[t].get(o, 0) for o in ops], w, label=labels[t], color=colors[t])
     ax.set_xticks(x); ax.set_xticklabels(ops)
     ax.set_ylabel("ops / sec  (higher = faster)"); ax.set_yscale("log")
-    ax.set_title("T3b: the buffer cache makes mfs beat ext4 on create/read/stat\n"
-                 "(write still trails — mfs zeroes each new block before writing)")
+    ax.set_title("T3b: the buffer cache makes mfs beat ext4 on create/read/stat")
     ax.legend()
     fig.tight_layout()
     out = os.path.join(HERE, "results", "t3b_cache.png"); fig.savefig(out, dpi=130)

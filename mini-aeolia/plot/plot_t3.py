@@ -21,8 +21,7 @@ def main():
         ax.bar(x + (i - (len(targets)-1)/2)*w, [data[t].get(o, 0) for o in ops], w, label=t)
     ax.set_xticks(x); ax.set_xticklabels(ops)
     ax.set_ylabel("ops / sec"); ax.set_yscale("log")
-    ax.set_title("T3: mini-libFS vs ext4 (same null_blk device)\n"
-                 "honest result — see RESULTS.md for why mfs trails on cached ops")
+    ax.set_title("T3: mini-libFS vs ext4 (same null_blk device)")
     ax.legend()
     fig.tight_layout()
     out = os.path.join(HERE, "results", "t3_fs_micro.png")
