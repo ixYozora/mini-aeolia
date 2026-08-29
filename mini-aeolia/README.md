@@ -24,6 +24,11 @@ The gap between `iou` and `iou_active` is the scheduler overhead that Aeolia's
 first finding is about. Only the waiting strategy differs between the two; the
 submission and completion mechanism is identical.
 
+`iou_poll` is measured but is not comparable to the other three on this device.
+`null_blk` does not apply `completion_nsec` on the poll-queue path, so its
+numbers are a floor for the polling stack rather than a measurement at the
+configured device latency. See Limits in the [top-level README](../README.md).
+
 `coexist.c` runs one latency-critical thread issuing dependent reads on the same
 core as `--hogs` compute threads, and reports both the LC tail latency and the
 hog throughput. Reporting both is what makes the latency/throughput trade-off
@@ -62,7 +67,10 @@ loader's argument:
 
 `loader.c` attaches the scheduler and must stay alive, since a `struct_ops`
 scheduler is only active while the process holds the link. Send it `SIGTERM` to
-restore the kernel scheduler.
+restore the kernel scheduler. If the kernel ejects the scheduler instead, the
+loader prints the reason and exits non-zero, and the calling script aborts; a
+run that silently fell back to the kernel scheduler would otherwise be recorded
+under the wrong label.
 
 ## scripts/ and plot/
 
@@ -70,6 +78,10 @@ restore the kernel scheduler.
 purpose: completion has to be asynchronous so the submitting task really sleeps
 and is woken. With `irqmode=0` the task never blocks and the effect under study
 disappears.
+
+`scripts/lib.sh` is sourced by the drivers rather than run. It holds the guard
+that refuses to `mkfs` anything but an unmounted `null_blk` device, and the
+attach/detach helpers for the scheduler.
 
 The `run_*.sh` drivers write `results/*.csv`, and `plot/plot_*.py` turn those
 into `results/*.png`. Neither reads anything outside this directory, so the
