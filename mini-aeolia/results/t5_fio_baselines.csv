@@ -1,4 +1,4 @@
 baseline,iops,lat_median_ns,lat_p99_ns
-psync(POSIX),118517.333333,7328,23168
-io_uring(intr),119616.400000,5408,18816
-io_uring(poll),468006.733333,120,274
+psync(POSIX),109759.000000,8256,14272
+io_uring(intr),94965.066667,6176,11072
+io_uring(poll),394454.533333,163,306

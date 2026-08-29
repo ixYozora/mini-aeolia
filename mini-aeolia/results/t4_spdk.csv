@@ -1,3 +1,3 @@
-backend,dev_lat_us,median_us,iops
+backend,dev_lat_us,mean_us,iops
 spdk_malloc,0,0.50,1740911.29
 spdk_delay,3,3.86,253879.21
