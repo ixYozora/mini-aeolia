@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# run_all.sh — one-shot: build, set up device, run the reproduction suite,
-# generate figures.  Run as root:  sudo scripts/run_all.sh
+# run_all.sh — build, set up the device, run the reproduction suite and
+# generate the figures.  Run as root:  sudo scripts/run_all.sh
 #
-# The experiments under scripts/run_o*.sh are NOT included here. run_o2.sh
-# recreates the device at different latencies, so it would disturb the others;
-# run those separately once this has finished.
+# The scripts/run_o*.sh experiments are left out. run_o2.sh recreates the
+# device at different latencies and would disturb the other runs, so run those
+# separately once this has finished.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -29,9 +29,12 @@ echo "== T3 mfs vs ext4 =="
 scripts/run_t3.sh "$DEV"
 echo "== T3b mfs buffer cache vs ext4/f2fs =="
 scripts/run_t3_cache.sh "$DEV"
-echo "== T4 SPDK kernel-bypass (optional; needs SPDK built) =="
-[ -x "${SPDK_DIR:-$PWD/../spdk}/build/examples/bdevperf" ] && scripts/run_m4_spdk.sh \
-  || echo "  (SPDK not built; skipping T4 — set SPDK_DIR to enable)"
+echo "== T4 SPDK kernel bypass (optional, needs SPDK built) =="
+if [[ -x "${SPDK_DIR:-$PWD/../spdk}/build/examples/bdevperf" ]]; then
+  scripts/run_m4_spdk.sh
+else
+  echo "  (SPDK not built; skipping T4. Set SPDK_DIR to enable it.)"
+fi
 echo "== T5 fio baselines =="
 scripts/run_baselines.sh "$DEV"
 

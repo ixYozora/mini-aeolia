@@ -1,5 +1,5 @@
-# mini-aeolia — build for the userspace benchmark/probe binaries.
-# BPF and SPDK components have their own build steps (sched/, scripts/vm/).
+# mini-aeolia — the userspace benchmark binaries.
+# The sched_ext scheduler has its own build:  make -C sched
 
 CC      ?= gcc
 CFLAGS  ?= -O2 -g -Wall -Wextra -std=gnu11

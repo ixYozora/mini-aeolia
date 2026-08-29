@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# run_baselines.sh — Test T5: replicate the *baseline* storage columns of
-# Aeolia's evaluation with fio (the Aeolia/AeoFS columns need UINTR/MPK and are
-# not reproducible here). Mirrors the paper's storage baselines:
+# run_baselines.sh — Test T5: the baseline storage columns of Aeolia's
+# evaluation, measured with fio. The Aeolia and AeoFS columns need UINTR and
+# MPK and are not reproducible here. The baselines are:
 #   psync            -> POSIX
 #   io_uring         -> io_uring default (interrupt)
 #   io_uring+hipri   -> io_uring polling
@@ -21,8 +21,8 @@ echo "baseline,iops,lat_median_ns,lat_p99_ns" > "$OUT"
 
 run() { # $1 label  $2 engine  $3 extra
   echo "[*] $1"
-  json=$(fio --name=$1 --filename="$DEV" --direct=1 --rw=randread --bs=4k \
-    --iodepth=1 --numjobs=1 --ioengine=$2 $3 --runtime=$RUNTIME --time_based \
+  json=$(fio --name="$1" --filename="$DEV" --direct=1 --rw=randread --bs=4k \
+    --iodepth=1 --numjobs=1 --ioengine="$2" $3 --runtime="$RUNTIME" --time_based \
     --output-format=json 2>/dev/null)
   iops=$(echo "$json"   | jq '.jobs[0].read.iops')
   med=$(echo "$json"    | jq '.jobs[0].read.clat_ns.percentile."50.000000" // .jobs[0].read.clat_ns.mean')

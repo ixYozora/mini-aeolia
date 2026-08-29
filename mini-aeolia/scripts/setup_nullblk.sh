@@ -3,9 +3,9 @@
 # paper's worst-case condition (an ultra-low-latency SSD like Optane), so that
 # interrupt/scheduler overhead is a visible fraction of total latency.
 #
-# Your real consumer NVMe is ~tens of microseconds; that masks the effect. A
-# null_blk device with a configurable completion delay (default ~3us here, in
-# the Optane ballpark) makes Finding #1 measurable on commodity hardware.
+# A consumer NVMe completes in tens of microseconds, which masks the effect. A
+# null_blk device with a configurable completion delay (3 us by default, in the
+# Optane ballpark) makes the effect measurable on commodity hardware.
 #
 # Requires root (modprobe + configfs). Run:  sudo scripts/setup_nullblk.sh
 #
@@ -20,11 +20,10 @@ COMPLETION_NSEC="${COMPLETION_NSEC:-3000}"
 POLL_QUEUES="${POLL_QUEUES:-4}"
 SUBMIT_QUEUES="${SUBMIT_QUEUES:-4}"
 SIZE_MB="${SIZE_MB:-4096}"
-# irqmode: 0=inline(sync), 1=softirq, 2=hrtimer. We default to 2 (timer) so that
-# completion is ASYNCHRONOUS after completion_nsec — the submitting task really
-# sleeps and is woken, which is what triggers the scheduler "idle-task dance"
-# Aeolia's Finding #1 is about. With irqmode=0 the task never blocks and the
-# effect is invisible.
+# irqmode: 0 inline, 1 softirq, 2 hrtimer. The default is 2, so that completion
+# is asynchronous after completion_nsec and the submitting task really sleeps
+# and is woken. That wakeup path is what the first finding of the paper is
+# about; with irqmode=0 the task never blocks and the effect disappears.
 IRQMODE="${IRQMODE:-2}"
 NAME="nullb0"
 
@@ -50,7 +49,7 @@ echo 2          > "$DEV/queue_mode"      # 2 = multi-queue (blk-mq)
 echo $IRQMODE   > "$DEV/irqmode"         # 0 = none, 1 = softirq, 2 = hrtimer
 echo $COMPLETION_NSEC > "$DEV/completion_nsec"
 echo $SUBMIT_QUEUES   > "$DEV/submit_queues"
-echo $POLL_QUEUES     > "$DEV/poll_queues" 2>/dev/null || echo "[!] poll_queues not settable (older module) — iou_poll may be unavailable"
+echo $POLL_QUEUES     > "$DEV/poll_queues" 2>/dev/null || echo "[!] poll_queues not settable (older module); iou_poll may be unavailable"
 echo 1          > "$DEV/memory_backed"   # back with RAM so reads return data
 echo 1          > "$DEV/power"           # bring device up
 
@@ -59,4 +58,8 @@ INDEX=$(cat "$DEV/index")
 BLK="/dev/nullb${INDEX}"
 echo "[*] created $BLK  (completion=${COMPLETION_NSEC}ns size=${SIZE_MB}MB poll_queues=${POLL_QUEUES})"
 ls -l "$BLK"
+if [[ "$INDEX" != 0 ]]; then
+    echo "[!] this is $BLK, not /dev/nullb0: another null_blk device already exists."
+    echo "[!] the run_*.sh scripts default to /dev/nullb0; pass $BLK explicitly."
+fi
 echo "$BLK"
