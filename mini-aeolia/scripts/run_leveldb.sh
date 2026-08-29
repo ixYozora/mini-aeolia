@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
-# T6 — LevelDB db_bench on ext4 vs f2fs (the paper's Table 7/8 BASELINE columns;
-# the AeoFS column needs UINTR/MPK and is not reproducible). Application-level.
+# T6 — LevelDB db_bench on ext4 vs f2fs: the baseline columns of the paper's
+# application-level tables. The AeoFS column needs UINTR and MPK and is not
+# reproducible here.
+#
+# mkfs destroys the contents of $DEV. Pass the null_blk device.
 #   sudo scripts/run_leveldb.sh [/dev/nullb0]
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/lib.sh
 DEV="${1:-/dev/nullb0}"
 #   DB_BENCH=/path/to/db_bench sudo -E scripts/run_leveldb.sh
 DB_BENCH="${DB_BENCH:-$PWD/../leveldb/build/db_bench}"
 MNT="/mnt/mfs_ext4"; N="${NUM:-100000}"
 BENCH="fillseq,fillrandom,fillsync,readrandom,deleterandom"
 OUT="results/t6_leveldb.csv"
+umount "$MNT" 2>/dev/null || true      # a previous aborted run may have left it
+require_scratch_dev "$DEV"
 [[ -x "$DB_BENCH" ]] || {
     echo "db_bench not found at $DB_BENCH"
     echo "build LevelDB, then point DB_BENCH at it:  DB_BENCH=/path/to/db_bench sudo -E $0"
