@@ -28,6 +28,7 @@ static inline void bit_clr(uint8_t *m, uint64_t i){ m[i>>3] &= (uint8_t)~(1u<<(i
 /* ---- raw block I/O via io_uring (synchronous depth-1) ---- */
 static int bio(mfs_t *fs, int is_write, uint64_t blk, void *buf) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(fs->ring);
+    if (!sqe) return -1;
     if (is_write) io_uring_prep_write(sqe, fs->fd, buf, MFS_BS, blk * MFS_BS);
     else          io_uring_prep_read (sqe, fs->fd, buf, MFS_BS, blk * MFS_BS);
     if (io_uring_submit_and_wait(fs->ring, 1) < 0) return -1;
@@ -37,9 +38,9 @@ static int bio(mfs_t *fs, int is_write, uint64_t blk, void *buf) {
     io_uring_cqe_seen(fs->ring, cqe);
     return (res == (int)MFS_BS) ? 0 : -1;
 }
-/* ---- write-back block cache (#1): hash + LRU, dirty tracking ----
- * bread/bwrite go through the cache; the raw bio() above is only used on a miss
- * (load) or on dirty eviction/flush. Write-back: bwrite only marks dirty.     */
+/* ---- write-back block cache: hash + LRU, dirty tracking ----
+ * bread/bwrite go through the cache; the raw bio() above is used only on a miss
+ * (load) and on dirty eviction or flush. bwrite only marks the block dirty. */
 struct bcache_entry {
     uint64_t blkno;
     int   in_use, dirty;
@@ -124,12 +125,16 @@ static int bwrite(mfs_t *fs, uint64_t blk, void *buf){
 static bcache_t *cache_new(uint32_t cap){
     if (cap==0) return NULL;
     bcache_t *c=calloc(1,sizeof(*c));
+    if (!c) return NULL;
     c->cap=cap;
     uint32_t m=1; while (m<cap) m<<=1; c->mask=m-1;
     c->htab=malloc((size_t)(c->mask+1)*sizeof(int32_t));
-    for (uint32_t i=0;i<=c->mask;i++) c->htab[i]=-1;
     c->ent=calloc(cap,sizeof(struct bcache_entry));
-    if (posix_memalign((void**)&c->data,4096,(size_t)cap*MFS_BS)){ free(c); return NULL; }
+    if (!c->htab || !c->ent ||
+        posix_memalign((void**)&c->data,4096,(size_t)cap*MFS_BS)){
+        free(c->htab); free(c->ent); free(c); return NULL;
+    }
+    for (uint32_t i=0;i<=c->mask;i++) c->htab[i]=-1;
     c->lru_head=c->lru_tail=-1; c->used=0;
     return c;
 }
@@ -426,13 +431,15 @@ int mfs_mount(const char *path, mfs_t *fs) {
 
     /* rebuild in-memory inode-used bitmap + dir append cursor */
     g_imap = calloc(1, (fs->sb.ninodes + 7)/8);
+    if (!g_imap) return -1;
     for (uint64_t i = 0; i < fs->sb.ninodes; i++) {
         struct mfs_dinode di;
         if (read_inode(fs, (int)i, &di)) return -1;
         if (di.mode) bit_set(g_imap, i);
     }
     g_ino_rover = 2;
-    struct mfs_dinode root; read_inode(fs, MFS_ROOT_INO, &root);
+    struct mfs_dinode root;
+    if (read_inode(fs, MFS_ROOT_INO, &root)) return -1;
     g_dir_slot = root.size / sizeof(struct mfs_dirent);
     return 0;
 }

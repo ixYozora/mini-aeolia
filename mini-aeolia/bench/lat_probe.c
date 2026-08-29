@@ -1,28 +1,29 @@
 // lat_probe.c — single-task, queue-depth-1 read-latency probe.
 //
-// Reproduces the methodology behind Aeolia's Finding #1 (paper §2): compare the
-// per-request latency of a single task issuing 4 KB reads across three I/O
-// completion paths:
+// Reproduces the methodology behind the paper's first finding (§2): compare the
+// per-request latency of a single task issuing reads across four completion
+// paths, selected with --mode:
 //
-//   posix      kernel stack, interrupt-driven   (pread, O_DIRECT)
-//   iou        io_uring default, interrupt       (the userspace+interrupt point)
-//   iou_poll   io_uring with IORING_SETUP_IOPOLL (userspace+polling)
+//   posix       pread on the raw device: kernel stack, interrupt-driven
+//   iou         io_uring, blocking completion: the thread sleeps and is woken
+//   iou_active  io_uring, active checking of the completion queue for --spin
+//               microseconds before falling back to a blocking wait
+//   iou_poll    io_uring with IORING_SETUP_IOPOLL (needs poll_queues on the device)
 //
-// The gap between iou and iou_poll is the "interrupt overhead" the paper
-// decomposes — most of which it attributes to the scheduler's idle-task dance,
-// not the interrupt mechanism itself. Run this under the default scheduler and
-// again under the active-checking sched_ext scheduler (M2) to see the gap shrink.
+// The gap between iou and iou_active is the scheduler overhead that the paper
+// attributes most of the interrupt cost to. Only the waiting strategy differs
+// between the two; submission and completion are identical.
 //
 // Build:  see ../Makefile   (needs liburing)
 // Usage:  sudo ./lat_probe --dev /dev/nullb0 --mode iou --bs 4096 --iters 200000
 //
 // Notes:
-//  * O_DIRECT requires the buffer, offset, and size to be 512-byte aligned; we
-//    align everything to 4096.
-//  * Reads are issued to random aligned offsets to defeat any caching, though
-//    O_DIRECT already bypasses the page cache.
-//  * Latency is measured with CLOCK_MONOTONIC around a single in-flight request
-//    (queue depth 1), matching the paper's single-task scenario.
+//  * O_DIRECT requires the buffer, offset and size to be 512-byte aligned;
+//    everything here is aligned to 4096.
+//  * Reads go to random aligned offsets, though O_DIRECT already bypasses the
+//    page cache.
+//  * Latency is measured with CLOCK_MONOTONIC around a single in-flight
+//    request, matching the paper's single-task scenario.
 
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -49,14 +50,13 @@ static const char *mode_name(enum mode m) {
                  default: return "iou_active"; }
 }
 
-// Userspace realization of Aeolia's "active-checking policy" (paper §2,
-// Finding #1): instead of blocking in io_uring_enter (which puts the task to
-// sleep and triggers the kernel idle-task dance when no other task is
-// runnable), submit the request and spin on the completion queue for a bounded
-// budget before falling back to a blocking wait. This keeps the task on-CPU
-// across the device latency window, removing the scheduler overhead — the same
-// effect Aeolia's iou_opt achieves.
 static inline void cpu_pause(void) { __asm__ __volatile__("pause" ::: "memory"); }
+
+static struct io_uring_sqe *get_sqe(struct io_uring *r) {
+    struct io_uring_sqe *sqe = io_uring_get_sqe(r);
+    if (!sqe) { fprintf(stderr, "submission queue full\n"); exit(1); }
+    return sqe;
+}
 
 static int cmp_u64(const void *a, const void *b) {
     uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
@@ -174,8 +174,11 @@ int main(int argc, char **argv) {
             ssize_t got = pread(fd, buf, bs, (off_t)off);
             if (got != (ssize_t)bs) { fprintf(stderr, "pread: %s\n", strerror(errno)); return 1; }
         } else if (m == M_IOU_ACTIVE) {
-            // active-checking: submit, then spin on the CQ before blocking
-            struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+            // Active checking: instead of blocking in io_uring_enter, which
+            // sleeps the task and pays the wakeup cost the paper measures,
+            // submit and then spin on the completion queue for a bounded
+            // budget. The task stays on-CPU across the device latency window.
+            struct io_uring_sqe *sqe = get_sqe(&ring);
             io_uring_prep_read(sqe, fd, buf, bs, off);
             int s = io_uring_submit(&ring);
             if (s < 0) { fprintf(stderr, "submit: %s\n", strerror(-s)); return 1; }
@@ -193,7 +196,7 @@ int main(int argc, char **argv) {
             if (cqe->res < 0) { fprintf(stderr, "io read: %s\n", strerror(-cqe->res)); return 1; }
             io_uring_cqe_seen(&ring, cqe);
         } else {
-            struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+            struct io_uring_sqe *sqe = get_sqe(&ring);
             io_uring_prep_read(sqe, fd, buf, bs, off);
             int s = io_uring_submit_and_wait(&ring, 1);
             if (s < 0) { fprintf(stderr, "submit_and_wait: %s\n", strerror(-s)); return 1; }

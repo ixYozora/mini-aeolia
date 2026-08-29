@@ -1,14 +1,17 @@
 // mfs.h — mini library filesystem (the "AeoFS analog").
 //
-// A small POSIX-ish filesystem that lives entirely in userspace and accesses
-// the block device directly via io_uring + O_DIRECT — no VFS, no syscalls per
-// op, no kernel filesystem. This is the stand-in for AeoFS: it demonstrates the
-// *library filesystem* model (paper §7) on commodity hardware. It does NOT
-// implement the MPK trusted/untrusted split or journaling; see ../README.md for
-// what is and isn't modelled.
+// A small POSIX-like filesystem that lives entirely in userspace and reaches
+// the block device directly through io_uring and O_DIRECT: no VFS, no syscall
+// per operation, no kernel filesystem. It stands in for AeoFS by demonstrating
+// the library filesystem model (paper §7) on commodity hardware. It implements
+// neither the MPK trusted/untrusted split nor journaling; see ../README.md for
+// what is and is not modelled.
 //
-// Scope: a single flat directory (root), regular files, direct + single-indirect
-// block maps. Enough to benchmark create/stat/read/write against ext4 (T3).
+// Scope: one flat directory (root), regular files, direct and single-indirect
+// block maps. Enough to benchmark create, stat, read and write against ext4.
+//
+// The mount state includes file-scope bookkeeping, so one filesystem may be
+// mounted at a time.
 
 #ifndef MFS_H
 #define MFS_H

@@ -4,9 +4,9 @@
 //   --target mfs    the mini library filesystem on a raw block device (--dev)
 //   --target posix  a kernel filesystem (e.g. ext4) under a directory (--dir)
 //
-// Reports per-op latency and ops/sec per phase. Without its block cache
-// (MFS_CACHE_BLOCKS=0) mfs is expected to TRAIL cached ext4, because every op
-// becomes a synchronous device round trip; quantifying that gap is the point.
+// Reports per-operation latency and ops/sec per phase. Without its block cache
+// (MFS_CACHE_BLOCKS=0) mfs trails cached ext4, because every operation becomes
+// a synchronous device round trip. Quantifying that gap is the point.
 //
 //   sudo ./fs_micro --target mfs   --dev /dev/nullb0 --nfiles 5000 --fsize 4096 --csv mfs
 //   sudo ./fs_micro --target posix --dir /mnt/x      --nfiles 5000 --fsize 4096 --csv ext4
@@ -61,6 +61,7 @@ int main(int argc, char **argv) {
         mfs_t fs;
         if (mfs_mount(dev, &fs)) { perror("mfs_mount"); return 1; }
         int *inos = malloc(nfiles * sizeof(int));
+        if (!inos) { perror("malloc"); return 1; }
 
         t0 = now_ns();
         for (long i=0;i<nfiles;i++){ snprintf(name,sizeof name,"f%ld",i);
@@ -83,6 +84,7 @@ int main(int argc, char **argv) {
     } else { /* posix */
         mkdir(dir, 0755);
         int *fds = malloc(nfiles * sizeof(int));
+        if (!fds) { perror("malloc"); return 1; }
 
         t0 = now_ns();
         for (long i=0;i<nfiles;i++){ snprintf(name,sizeof name,"%s/f%ld",dir,i);

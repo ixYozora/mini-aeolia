@@ -1,11 +1,11 @@
 // coexist.c — Test T2: coordinated scheduling under contention.
 //
-// Models Aeolia §9.3: one latency-critical (LC) I/O thread shares a single CPU
-// with N compute-bound "hog" threads. The LC thread issues blocking 4 KB reads,
-// so after each completion it must be re-scheduled onto the contended CPU. Under
-// the default scheduler it waits behind a hog's time slice -> high tail latency.
-// Under the miniaeo coordinated scheduler the LC thread (comm "mlc_io") preempts
-// the hog and runs immediately -> low tail latency.
+// One latency-critical (LC) I/O thread shares a single CPU with N compute-bound
+// hog threads. The LC thread issues blocking 4 KB reads, so after every
+// completion it has to be scheduled back onto the contended CPU. Under the
+// default scheduler it waits behind a hog's time slice, which shows up as a
+// long tail. Under the miniaeo coordinated scheduler the LC thread (comm
+// "mlc_io") preempts the hog and runs immediately.
 //
 //   sudo ./coexist --dev /dev/nullb0 --hogs 3 --cpu 3 --iters 100000 --csv default
 //
@@ -88,7 +88,7 @@ static void *lc_fn(void *a) {
         uint64_t t0 = now_ns();
         struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
         io_uring_prep_read(sqe, fd, buf, A->bs, off);
-        io_uring_submit_and_wait(&ring, 1);          // BLOCK -> sleeps the LC thread
+        io_uring_submit_and_wait(&ring, 1);          // blocks: the LC thread sleeps here
         struct io_uring_cqe *cqe;
         io_uring_wait_cqe(&ring, &cqe);
         io_uring_cqe_seen(&ring, cqe);
@@ -123,12 +123,15 @@ int main(int argc, char **argv) {
     }
 
     uint64_t *lat = calloc(iters, sizeof(uint64_t));
+    if (!lat) { perror("calloc"); return 1; }
     pthread_t hog[64]; if (nhogs > 64) nhogs = 64;
     uint64_t run0 = now_ns();
-    for (int i = 0; i < nhogs; i++) pthread_create(&hog[i], NULL, hog_fn, NULL);
+    for (int i = 0; i < nhogs; i++)
+        if (pthread_create(&hog[i], NULL, hog_fn, NULL)) { perror("pthread_create"); return 1; }
 
     struct lc_args A = { dev, bs, iters, warmup, lat };
-    pthread_t lc; pthread_create(&lc, NULL, lc_fn, &A);
+    pthread_t lc;
+    if (pthread_create(&lc, NULL, lc_fn, &A)) { perror("pthread_create"); return 1; }
     pthread_join(lc, NULL);
 
     hogs_stop = 1;
