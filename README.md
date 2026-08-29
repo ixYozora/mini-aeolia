@@ -25,86 +25,9 @@ whether the paper's *claims* still show up. They do, qualitatively.
 | MPK-protected sharing | not modelled (single trust domain) |
 | Real kernel bypass | SPDK against a RAM bdev, `--no-pci` |
 
-## Results
-
-The numbers below are one run on an Intel Core i7-10510U (4 cores, 8 threads),
-16 GB RAM, Ubuntu 26.04, Linux 7.0.0, against `null_blk` at a 3 µs completion
-delay. Absolute values move between runs and between machines; what reproduces
-is the ordering and the order of magnitude. Re-running `scripts/run_all.sh`
-regenerates every table here.
-
-**The cost of an interrupt is scheduling, not delivery** (T1, 4 KB read, queue
-depth 1, median latency in µs):
-
-| `posix` | `iou` (interrupt) | `iou_active` | `iou_poll` |
-| --- | --- | --- | --- |
-| 8.12 | 8.75 | 5.55 | 1.75 |
-
-Replacing the sleep and wake with active checking removes 3.2 µs without
-changing the delivery mechanism, at the cost of running the core at 100 %
-utilisation instead of 63 %. At 128 KB the gap falls to 2.3 µs, because device
-transfer time dominates.
-
-`iou_poll` is listed for completeness but is not comparable to the other three.
-`null_blk` does not apply its configured completion delay on the poll-queue
-path: raising `completion_nsec` from 3 µs to 20 µs moves the `iou` median from
-8.5 µs to 26.4 µs and leaves the `iou_poll` median at 1.7 µs to 2.0 µs. Every
-polling figure in this repository is therefore a floor for the polling stack,
-not a measurement at 3 µs.
-
-**Coordinated scheduling collapses tail latency** (T2, one latency-critical
-thread sharing a core with 3 compute hogs, p99.9):
-
-| default (EEVDF) | `scx_fifo` (custom scheduler, no LC awareness) | `scx_coord` (LC-aware) |
-| --- | --- | --- |
-| 3.10 ms | 6.02 ms | 24.3 µs |
-
-The `scx_fifo` control run stays in the millisecond range, so the 127× win comes
-from the policy and not from merely swapping the scheduler out.
-
-**A library filesystem beats ext4 on metadata once it has a cache** (T3b, 5000
-files of 4 KB on the same device, ops/s):
-
-| op | `mfs` (cache) | `ext4` | `f2fs` | `mfs` vs `ext4` |
-| --- | --- | --- | --- | --- |
-| create | 870,698 | 39,017 | 56,838 | 22× |
-| read | 1,364,798 | 565,819 | 827,057 | 2.4× |
-| stat | 7,331,335 | 1,546,468 | 1,571,578 | 4.7× |
-| write | 195,755 | 272,057 | 266,685 | 0.72× |
-
-Write stays behind because `mfs` zero-fills every newly allocated block. Without
-the cache `mfs` loses on every operation, at 13,799 creates/s against ext4's
-39,017, because each one becomes a synchronous device round trip.
-
-**Latency and throughput pull against each other** (T2c). LC p99.9 latency in µs:
-
-| hogs | default | `preempt` | `fair` |
-| --- | --- | --- | --- |
-| 1 | 835 | 29 | 27 |
-| 2 | 3,896 | 23 | 23 |
-| 4 | 3,376 | 18 | 14 |
-| 8 | 3,698 | 12 | 954 |
-
-Compute throughput over the same runs, in hog batches/s:
-
-| hogs | default | `preempt` | `fair` |
-| --- | --- | --- | --- |
-| 1 | 1,086 | 299 | 235 |
-| 2 | 1,501 | 296 | 451 |
-| 4 | 2,615 | 293 | 1,142 |
-| 8 | 4,745 | 600 | 1,475 |
-
-`preempt` holds the tail in the tens of microseconds at every contention level
-and pays for it in compute, keeping between 11 % and 28 % of the default
-scheduler's throughput. Weighted virtual time reaches the same tail up to four
-hogs, and at two and four hogs keeps 1.5 to 3.9 times more compute than
-`preempt`; at one hog the two are comparable. At eight hogs its tail degrades to
-954 µs. Neither policy holds both properties across the whole range. Making the
-switch cheap enough that prioritisation costs little is what Aeolia's user
-interrupts buy.
-
-The throughput column is the noisiest measurement here and varies by a factor of
-two between runs on an otherwise busy laptop; the latency columns are stable.
+**Measurements and figures live in
+[`mini-aeolia/results/README.md`](mini-aeolia/results/README.md)**, together
+with the machine they were taken on and what each CSV holds.
 
 ## Requirements
 
@@ -165,8 +88,11 @@ mini-aeolia/
   scripts/  setup_nullblk.sh, run_*.sh    experiment drivers -> results/*.csv
             lib.sh        device guard and scheduler attach/detach, sourced
   plot/     plot_*.py                     CSV -> results/*.png
-  results/  CSVs and figures from the runs reported above
+  results/  CSVs, figures and README.md with the measurements
 ```
+
+`mini-aeolia/README.md` describes what each component is and how the pieces fit
+together.
 
 ## Experiments
 
@@ -230,11 +156,11 @@ runs `bdevperf` with `--no-pci` against RAM-backed bdevs.
   latency by removing the sleep/wake, but it burns CPU to do so.
 - `null_blk` is a RAM device with an artificial delay. It has no controller
   queueing, no garbage collection and no write amplification.
+- `null_blk` also ignores `completion_nsec` on the poll-queue path, so every
+  polling number is a floor for the polling stack rather than a measurement at
+  the configured device latency. The interrupt paths are unaffected; the
+  evidence is in [`results/README.md`](mini-aeolia/results/README.md).
 - Absolute numbers are not comparable to the paper, which used 128 cores and a
   real Optane SSD.
 - `mfs` has no journal and no crash consistency, and it has not been tested
   beyond the workloads in `bench/`.
-- `null_blk` ignores `completion_nsec` on the poll-queue path, so `iou_poll` and
-  the `poll` rows of T1b and T5 are a floor for the polling stack rather than a
-  comparison at the same device latency. The interrupt paths are unaffected, so
-  the `iou` to `iou_active` gap this testbed is built around still holds.

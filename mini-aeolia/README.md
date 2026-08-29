@@ -86,4 +86,5 @@ attach/detach helpers for the scheduler.
 The `run_*.sh` drivers write `results/*.csv`, and `plot/plot_*.py` turn those
 into `results/*.png`. Neither reads anything outside this directory, so the
 figures can be regenerated from the committed CSVs without re-running any
-experiment.
+experiment. The measurements themselves are in
+[`results/README.md`](results/README.md).
