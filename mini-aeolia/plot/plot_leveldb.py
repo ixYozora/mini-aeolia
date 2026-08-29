@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""T6 — LevelDB db_bench: ext4 vs f2fs (paper Table 7/8 baseline columns)."""
+"""T6 — LevelDB db_bench: ext4 vs f2fs, the baseline columns of the paper's
+application-level tables."""
 import os, csv, sys
 from collections import defaultdict
 import matplotlib; matplotlib.use("Agg")
@@ -25,8 +26,8 @@ def main():
         ax.bar(x + off, [data[f].get(b, 0) for b in benches], w, label=f, color=colors[f])
     ax.set_xticks(x); ax.set_xticklabels(benches, rotation=15)
     ax.set_ylabel("ops / sec"); ax.set_yscale("log")
-    ax.set_title("T6: LevelDB db_bench — ext4 vs f2fs (paper Table 8 baselines)\n"
-                 "ext4 leads most; f2fs wins fillsync (log-structured). AeoFS column needs UINTR/MPK.")
+    ax.set_title("T6: LevelDB db_bench, ext4 vs f2fs\n"
+                 "kernel filesystem baselines; the AeoFS column needs UINTR and MPK")
     ax.legend()
     fig.tight_layout()
     out = os.path.join(HERE, "results", "t6_leveldb.png"); fig.savefig(out, dpi=130)

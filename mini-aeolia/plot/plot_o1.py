@@ -26,9 +26,9 @@ def main():
     ax2 = ax1.twinx()
     l2, = ax2.plot(xs, util, "s-", color="#2a9d8f", label="CPU utilization")
     ax2.set_ylabel("CPU utilization (%)", color="#2a9d8f"); ax2.set_ylim(0, 105)
-    ax1.set_title("O1: active-checking trades CPU for latency\n(latency plateaus once spin ≳ device latency; CPU → 100%)")
-    lines = [l1, l2] + ax1.get_lines()[1:]
-    ax1.legend(loc="center right", fontsize=8)
+    ax1.set_title("O1: active checking trades CPU for latency\n"
+                  "(latency plateaus once the spin budget exceeds the device latency)")
+    ax1.legend(handles=[l1, l2], loc="center right", fontsize=8)
     fig.tight_layout()
     out = os.path.join(HERE, "results", "o1_spin_sweep.png"); fig.savefig(out, dpi=130)
     print("wrote", out)

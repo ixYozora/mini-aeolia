@@ -3,8 +3,10 @@
 
 Reads results/t1_latency.csv and produces:
   results/t1_median_latency.png   median latency per mode, grouped by block size
-  results/t1_interrupt_gap.png    iou vs iou_poll gap (the "interrupt overhead"),
-                                  default vs active_check scheduler if both present
+  results/t1_interrupt_gap.png    the iou to iou_active gap at 4 KB, which is
+                                  the scheduler overhead active checking removes
+
+If the CSV holds more than one scheduler label, the first one is plotted.
 
 Usage: python3 plot/plot_t1.py
 """
@@ -63,8 +65,10 @@ def fig_median(rows):
 
 
 def fig_gap(rows):
-    # The Finding #1 headline at 4096B: median latency of each path, annotating
-    # the scheduler overhead that active-checking removes:  iou - iou_active.
+    # Median latency of each path at 4 KB, annotating the scheduler overhead
+    # that active checking removes: iou - iou_active.
+    scheds = sorted({r["sched"] for r in rows})
+    rows = [r for r in rows if r["sched"] == scheds[0]]
     sub = {r["mode"]: r["median_ns"] / 1000.0 for r in rows if r["bs"] == 4096}
     order = [m for m in ["posix", "iou", "iou_active", "iou_poll"] if m in sub]
     if "iou" not in sub or "iou_active" not in sub:
@@ -75,7 +79,7 @@ def fig_gap(rows):
     colors = {"posix": "#bbb", "iou": "#e76f51", "iou_active": "#2a9d8f", "iou_poll": "#264653"}
     ax.bar(order, [sub[m] for m in order], color=[colors[m] for m in order])
     ax.set_ylabel("median latency @4KB (µs)")
-    ax.set_title("T1 / Finding #1: most of the interrupt path's cost is scheduling\n"
+    ax.set_title("T1: most of the interrupt path's cost is scheduling\n"
                  f"active-checking removes ≈{sched_overhead:.1f} µs (iou → iou_active)")
     ax.annotate("", xy=(1, sub["iou_active"]), xytext=(1, sub["iou"]),
                 arrowprops=dict(arrowstyle="<->", color="black"))

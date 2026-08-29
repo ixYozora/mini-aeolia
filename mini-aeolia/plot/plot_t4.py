@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""T4 — backend comparison: io_uring paths vs SPDK kernel-bypass, depth-1 4 KB.
+"""T4 — backend comparison: io_uring paths vs SPDK kernel bypass, depth-1 4 KB.
 
-Combines T1 (io_uring on null_blk @3 µs) with M4 (SPDK polling on a RAM+delay
-bdev) to contrast the two userspace storage stacks at the same device latency.
+Combines T1 (io_uring on null_blk at 3 µs) with the SPDK run (polling on a RAM
+bdev with the same delay) to contrast the two userspace storage stacks at the
+same device latency.
+
+The io_uring bars are medians from lat_probe; the SPDK bars are bdevperf means,
+which is the only latency figure bdevperf reports.
 """
 import os, csv, sys
 import matplotlib; matplotlib.use("Agg")
@@ -20,7 +24,7 @@ def main():
     for r in csv.DictReader(open(T1)):
         if int(r["bs"]) == 4096 and r.get("sched", "default") == "default":
             iou[r["mode"]] = float(r["median_ns"]) / 1000.0
-    spdk = {r["backend"]: float(r["median_us"]) for r in csv.DictReader(open(T4))}
+    spdk = {r["backend"]: float(r["mean_us"]) for r in csv.DictReader(open(T4))}
 
     bars = [
         ("posix",         iou.get("posix"),      "#bbb",     "io_uring/kernel"),
@@ -37,9 +41,12 @@ def main():
     ax.bar(labels, vals, color=cols)
     for i, v in enumerate(vals):
         ax.text(i, v, f"{v:.2f}", ha="center", va="bottom", fontsize=8)
-    ax.set_ylabel("median latency @4 KB depth-1 (µs)")
-    ax.set_title("T4: io_uring vs SPDK kernel-bypass at a 3 µs device\n"
-                 "full kernel bypass (SPDK 3.9 µs) beats io_uring interrupt (7.4) and active-checking (5.3)")
+    ax.set_ylabel("latency @4 KB depth-1 (µs)")
+    sub = []
+    if spdk.get("spdk_delay") is not None: sub.append(f"SPDK bypass {spdk['spdk_delay']:.1f} µs")
+    if iou.get("iou") is not None:         sub.append(f"io_uring interrupt {iou['iou']:.1f}")
+    if iou.get("iou_active") is not None:  sub.append(f"active checking {iou['iou_active']:.1f}")
+    ax.set_title("T4: io_uring vs SPDK kernel bypass at a 3 µs device\n" + ", ".join(sub))
     fig.tight_layout()
     out = os.path.join(HERE, "results", "t4_backend.png"); fig.savefig(out, dpi=130)
     print("wrote", out)
